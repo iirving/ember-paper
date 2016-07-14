@@ -2,6 +2,7 @@ import Ember from 'ember';
 import BaseFocusable from './base-focusable';
 import ColorMixin from 'ember-paper/mixins/color-mixin';
 import FlexMixin from 'ember-paper/mixins/flex-mixin';
+import ChildMixin from 'ember-paper/mixins/child-mixin';
 
 import requiredValidator from 'ember-paper/validators/required';
 import minValidator from 'ember-paper/validators/min';
@@ -11,7 +12,7 @@ import maxlengthValidator from 'ember-paper/validators/maxlength';
 
 const { $, computed, isArray, isEmpty, Logger, A, run, assert, get } = Ember;
 
-export default BaseFocusable.extend(ColorMixin, FlexMixin, {
+export default BaseFocusable.extend(ColorMixin, FlexMixin, ChildMixin, {
   tagName: 'md-input-container',
   classNames: ['md-default-theme'],
   classNameBindings: [
@@ -51,6 +52,7 @@ export default BaseFocusable.extend(ColorMixin, FlexMixin, {
    *    true: input has been touched and is invalid.
    */
   isInvalid: computed.or('validationErrorMessages.length', 'isNativeInvalid'),
+  isValid: computed.not('isInvalid'),
 
   isInvalidAndTouched: computed.and('isInvalid', 'isTouched'),
 
@@ -110,7 +112,7 @@ export default BaseFocusable.extend(ColorMixin, FlexMixin, {
         if (!validation.validate(currentValue, paramValue)) {
           let message = this.get(`errorMessages.${valParam}`) || get(validation, 'message');
           messages.pushObject({
-            message: Ember.String.loc(message, paramValue, currentValue)
+            message: Ember.String.loc(message.string || message, paramValue, currentValue)
           });
         }
       } catch (error) {
@@ -131,8 +133,8 @@ export default BaseFocusable.extend(ColorMixin, FlexMixin, {
   // Lifecycle hooks
   didReceiveAttrs() {
     this._super(...arguments);
-    assert('{{paper-input}} and {{paper-select}} require an `onChange` action or null for no action.', this.get('onChange') !== undefined);
-    this.notifyInvalid();
+    assert('{{paper-input}} requires an `onChange` action or null for no action.', this.get('onChange') !== undefined);
+    this.notifyValidityChange();
   },
 
   didInsertElement() {
@@ -149,7 +151,7 @@ export default BaseFocusable.extend(ColorMixin, FlexMixin, {
   },
 
   willClearRender() {
-    this.sendAction('onInvalid', false);
+    this.sendAction('onValidityChange', false);
   },
 
   willDestroyElement() {
@@ -198,34 +200,38 @@ export default BaseFocusable.extend(ColorMixin, FlexMixin, {
     return offsetHeight + (line > 0 ? line : 0);
   },
 
-  notifyInvalid() {
-    let isInvalid = this.get('isInvalid');
-    let lastIsInvalid = this.get('lastIsInvalid');
-    if (lastIsInvalid !== isInvalid) {
-      this.sendAction('onInvalid', isInvalid);
-      this.set('lastIsInvalid', isInvalid);
+  notifyValidityChange() {
+    let isValid = this.get('isValid');
+    let lastIsValid = this.get('lastIsValid');
+    if (lastIsValid !== isValid) {
+      this.sendAction('onValidityChange', isValid);
+      this.set('lastIsValid', isValid);
     }
   },
 
   setValue(value) {
-    this.$('input, textarea').val(value);
+    if (this.$('input, textarea').val() !== value) {
+      this.$('input, textarea').val(value);
+    }
   },
 
   actions: {
     handleInput(e) {
       this.sendAction('onChange', e.target.value);
       // setValue below ensures that the input value is the same as this.value
-      this.setValue(this.get('value'));
+      run.next(() => {
+        this.setValue(this.get('value'));
+      });
       this.growTextarea();
       let inputElement = this.$('input').get(0);
       this.set('isNativeInvalid', inputElement && inputElement.validity && inputElement.validity.badInput);
-      this.notifyInvalid();
+      this.notifyValidityChange();
     },
 
     handleBlur(e) {
       this.sendAction('onBlur', e);
       this.set('isTouched', true);
-      this.notifyInvalid();
+      this.notifyValidityChange();
     }
   }
 });
